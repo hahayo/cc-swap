@@ -1,4 +1,4 @@
-"""The claude-swap Textual application.
+"""The ccswap Textual application.
 
 Owns the snapshot poll loop and every mutating action (switch/add/remove),
 so the dashboard, the auto view, and the command palette all drive the same
@@ -18,6 +18,7 @@ from textual.reactive import reactive
 from textual.worker import WorkerState
 
 from claude_swap import printer
+from claude_swap.codex import CodexAccountSwitcher
 from claude_swap.models import AccountsSnapshot
 from claude_swap.snapshot_source import account_identity
 from claude_swap.settings import load_settings, load_ui_settings, set_setting
@@ -30,9 +31,9 @@ from claude_swap.tui.theme import CSWAP_DARK, CSWAP_LIGHT
 
 
 class CswapApp(App):
-    """claude-swap interactive dashboard."""
+    """ccswap interactive dashboard."""
 
-    TITLE = "claude-swap"
+    TITLE = "ccswap"
     CSS_PATH = "cswap.tcss"
     # No command palette: actions live in the dashboard's nested menu, in
     # their own context — not in a global searchable list.
@@ -58,7 +59,9 @@ class CswapApp(App):
         detected: str | None = None,
     ) -> None:
         super().__init__()
-        self.switcher = switcher
+        self._claude_switcher = switcher
+        self._codex_switcher: CodexAccountSwitcher | None = None
+        self.provider = "claude"
         self._start = start  # "dashboard" | "watch" (`cswap watch`)
         self._detected = detected  # terminal background sensed pre-driver, or None
         self.source = SnapshotSource(switcher)
@@ -82,6 +85,31 @@ class CswapApp(App):
             self._theme_name = load_ui_settings(switcher.backup_dir).theme
         except Exception:
             self._theme_name = "auto"
+
+    @property
+    def switcher(self):
+        if self.provider == "claude":
+            return self._claude_switcher
+        if self._codex_switcher is None:
+            self._codex_switcher = CodexAccountSwitcher()
+        return self._codex_switcher
+
+    @property
+    def provider_label(self) -> str:
+        return "Claude Code" if self.provider == "claude" else "Codex"
+
+    def set_provider(self, provider: str) -> None:
+        if provider not in {"claude", "codex"}:
+            raise ValueError(f"Unknown provider: {provider}")
+        if provider == self.provider:
+            return
+        self.provider = provider
+        self.source = SnapshotSource(self.switcher)
+        self._store_only = False
+        self._full_next = True
+        self.snapshot = None
+        self.request_refresh(full=True)
+        self.notify(f"Showing {self.provider_label} accounts")
 
     def on_mount(self) -> None:
         self.register_theme(CSWAP_DARK)
@@ -124,7 +152,7 @@ class CswapApp(App):
         generation = self._next_refresh_generation()
         self._update_refresh_status()
         self.run_worker(
-            partial(self._refresh_blocking, generation, "normal", full, False),
+            partial(self._refresh_blocking, self.source, generation, "normal", full, False),
             thread=True,
             group="refresh-normal",
             exit_on_error=False,
@@ -138,7 +166,7 @@ class CswapApp(App):
         generation = self._next_refresh_generation()
         self._update_refresh_status()
         self.run_worker(
-            partial(self._refresh_blocking, generation, "store", False, True),
+            partial(self._refresh_blocking, self.source, generation, "store", False, True),
             thread=True,
             group="refresh-store",
             exit_on_error=False,
@@ -150,19 +178,32 @@ class CswapApp(App):
         return self._refresh_generation
 
     def _refresh_blocking(
-        self, generation: int, lane: str, full: bool, store_only: bool
+        self,
+        source: SnapshotSource,
+        generation: int,
+        lane: str,
+        full: bool,
+        store_only: bool,
     ) -> None:
-        snap = self.source.take(full=full, store_only=store_only)
-        self.call_from_thread(self._apply_snapshot, generation, lane, snap)
+        # The source is captured at launch, not read here: set_provider swaps
+        # self.source, and a worker already in flight must keep reading the
+        # provider it started on so _apply_snapshot can recognise it as stale.
+        snap = source.take(full=full, store_only=store_only)
+        self.call_from_thread(self._apply_snapshot, source, generation, lane, snap)
 
     def _apply_snapshot(
-        self, generation: int, lane: str, snap: AccountsSnapshot
+        self, source: SnapshotSource, generation: int, lane: str, snap: AccountsSnapshot
     ) -> None:
         if lane == "normal":
             self._normal_refreshing = False
             self._normal_started_at = None
         else:
             self._store_refreshing = False
+        if source is not self.source:
+            # Provider changed while this worker ran; the accounts it carries
+            # belong to the other provider. Drop it and start a fresh lane.
+            self._tick()
+            return
         self._last_refresh_error = ""
         if generation >= self._applied_generation:
             self._applied_generation = generation
@@ -291,7 +332,7 @@ class CswapApp(App):
 
     def action_switch_best(self) -> None:
         self._start_action(
-            "Switch (best)",
+            "Switch (best)" if self.provider == "claude" else "Switch (next)",
             partial(self.switcher.switch, strategy="best", json_output=True),
         )
 
@@ -332,7 +373,7 @@ class CswapApp(App):
     def action_add_current(self) -> None:
         self.push_screen(
             ConfirmModal(
-                "Back up the current Claude Code login as a managed account?\n\n"
+                f"Back up the current {self.provider_label} login as a managed account?\n\n"
                 "If this account is already managed, its stored credentials "
                 "are refreshed in place.",
                 title="Add account",
@@ -350,6 +391,12 @@ class CswapApp(App):
             )
 
     def action_add_token(self) -> None:
+        if self.provider != "claude":
+            self.notify(
+                "Codex accounts are added from the current 'codex login' session",
+                severity="warning",
+            )
+            return
         self.push_screen(AddTokenModal(), self._on_token_form)
 
     def _on_token_form(self, form: TokenForm | None) -> None:

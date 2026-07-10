@@ -26,7 +26,12 @@ from textual.screen import Screen
 from textual.widgets import Footer, ListView, Static
 
 from claude_swap.models import AccountsSnapshot
-from claude_swap.tui.widgets import AccountItem, AccountsPanel, MenuItem
+from claude_swap.tui.widgets import (
+    AccountItem,
+    AccountsPanel,
+    CyclingListView,
+    MenuItem,
+)
 
 if TYPE_CHECKING:
     from claude_swap.tui.app import CswapApp
@@ -61,7 +66,7 @@ class DashboardScreen(Screen):
     def compose(self) -> ComposeResult:
         yield AccountsPanel(id="accounts-panel")
         yield Static("", id="menu-title")
-        yield ListView(id="menu")
+        yield CyclingListView(id="menu")
         yield Footer()
 
     async def on_mount(self) -> None:
@@ -80,14 +85,24 @@ class DashboardScreen(Screen):
             ("Add account…", "add-menu"),
             ("Disable / enable account…", "disable-menu"),
             ("Remove account…", "remove-menu"),
+            (f"Provider: {self.app.provider_label}…", "provider-menu"),
             ("Theme…", "theme-menu"),
             ("Quit", "quit"),
         ]
 
     def _add_entries(self) -> MenuEntries:
+        if self.app.provider == "codex":
+            return [("From current Codex login", "add-login"), _BACK]
         return [
             ("From current Claude Code login", "add-login"),
             ("From a setup-token / API key…", "add-token"),
+            _BACK,
+        ]
+
+    def _provider_entries(self) -> MenuEntries:
+        return [
+            ("Claude Code", "provider:claude"),
+            ("Codex", "provider:codex"),
             _BACK,
         ]
 
@@ -169,6 +184,12 @@ class DashboardScreen(Screen):
             await self._pop_menu()
         elif action_id == "add-menu":
             await self._push_menu("add account", self._add_entries())
+        elif action_id == "provider-menu":
+            await self._push_menu("provider", self._provider_entries())
+        elif action_id.startswith("provider:"):
+            app.set_provider(action_id.split(":", 1)[1])
+            self._menu_stack = [("menu", self._root_entries())]
+            await self._render_menu()
         elif action_id == "remove-menu":
             await self._push_menu("remove account", self._remove_entries())
         elif action_id.startswith("remove:"):
@@ -228,7 +249,7 @@ class AccountListScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield Static("", id="list-title")
-        yield ListView(id="accounts")
+        yield CyclingListView(id="accounts")
         yield Footer()
 
     def on_mount(self) -> None:
