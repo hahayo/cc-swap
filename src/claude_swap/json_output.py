@@ -106,13 +106,24 @@ def usage_to_json(usage: dict, fetched_at: float | None = None) -> dict:
     Sub-keys are emitted only when present in the source (the API does not always
     return every window or pay-as-you-go spend). ``fetched_at`` is the
     measurement's fetch time; passing it adds pace fields to the weekly
-    windows (``seven_day``, ``scoped``) only — never ``five_hour`` (issue #125).
+    windows (``seven_day``, ``weekly``, ``scoped``) only — never ``five_hour``
+    (issue #125).
     """
     out: dict = {}
     if "five_hour" in usage:
         out["fiveHour"] = _window_to_json(usage["five_hour"])
     if "seven_day" in usage:
         out["sevenDay"] = _weekly_window_to_json(usage["seven_day"], fetched_at)
+    if "weekly" in usage:
+        # Codex's canonical weekly window is the same 7-day cadence as
+        # Claude's seven_day, so it earns the same pace fields.
+        out["weekly"] = _weekly_window_to_json(usage["weekly"], fetched_at)
+    if "reset_credits" in usage:
+        resets = usage["reset_credits"]
+        resets_out = {"available": resets["available"]}
+        if "expires_at" in resets:
+            resets_out["earliestExpiresAt"] = resets["expires_at"]
+        out["resetCredits"] = resets_out
     if "spend" in usage:
         spend = usage["spend"]
         spend_out: dict = {

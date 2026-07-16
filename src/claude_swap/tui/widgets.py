@@ -117,10 +117,11 @@ def usage_rows(
     (``resets 2h 13m · 20:39``) for rows that have room; otherwise it equals
     ``suffix``. Only windows the account actually has produce a row — an
     annual plan without a 7-day window simply has no 7d line. Order matches
-    the CLI: spend, 5h, 7d, then per-model scoped windows (e.g. "Fable"),
-    the latter marked ``(!)`` at/over their limit. The weekly (7d) and scoped
-    rows also carry a "(ahead of pace)" marker when meaningfully ahead of the
-    week's expected usage (issue #125) — never the 5h row.
+    the CLI: spend, the provider's quota windows (5h, 7d, Weekly), then
+    per-model scoped windows (e.g. "Fable"), the latter marked ``(!)`` at/over
+    their limit. The weekly (7d/Weekly) and scoped rows also carry an
+    "(ahead of pace)" marker when meaningfully ahead of the week's expected
+    usage (issue #125) — never the 5h row.
     """
     if not isinstance(last_good, dict):
         return []
@@ -132,12 +133,16 @@ def usage_rows(
         suffix = f"{reset}  {amounts}" if reset else amounts
         suffix_full = f"{reset_full}  {amounts}" if reset_full else amounts
         rows.append(("$$", float(spend["pct"]), suffix, suffix_full))
-    for key, label in (("five_hour", "5h"), ("seven_day", "7d")):
+    for key, label in (
+        ("five_hour", "5h"),
+        ("seven_day", "7d"),
+        ("weekly", "Weekly"),
+    ):
         window = last_good.get(key)
         if window:
             reset, reset_full = _reset_parts(window, now)
             suffix, suffix_full = reset or "", reset_full or ""
-            if key == "seven_day":
+            if key != "five_hour":
                 marker = _pace_suffix(window, fetched_at)
                 if marker:
                     suffix = f"{suffix}  {marker}" if suffix else marker
@@ -157,6 +162,20 @@ def usage_rows(
                 suffix_full = f"{suffix_full}  {marker}" if suffix_full else marker
         rows.append((window["name"], pct, suffix, suffix_full))
     return rows
+
+
+def reset_credits_text(last_good: dict | None, now: float) -> str | None:
+    """Compact Codex banked-reset count and earliest expiry."""
+    if not isinstance(last_good, dict):
+        return None
+    resets = last_good.get("reset_credits")
+    if not isinstance(resets, dict) or not isinstance(resets.get("available"), int):
+        return None
+    text = f"{resets['available']} banked"
+    expiry = data.reset_text({"resets_at": resets.get("expires_at")}, now)
+    if expiry:
+        text += f" · earliest expires {expiry.removeprefix('resets ')}"
+    return text
 
 
 def account_card_text(
@@ -232,6 +251,11 @@ def account_card_text(
                 palette=palette,
             )
         )
+    resets = reset_credits_text(acc.usage.last_good, now)
+    if resets:
+        text.append("\n    ")
+        text.append("Resets ", style=MUTED)
+        text.append(resets, style=FOREGROUND)
     return text
 
 
@@ -267,7 +291,11 @@ def mini_account_text(
     fetched_at = acc.usage.fetched_at
     stale = acc.usage.age_s is not None and acc.usage.age_s > STALE_OK_S
     parts = 0
-    for key, label in (("five_hour", "5h"), ("seven_day", "7d")):
+    for key, label in (
+        ("five_hour", "5h"),
+        ("seven_day", "7d"),
+        ("weekly", "Weekly"),
+    ):
         window = last_good.get(key) if isinstance(last_good, dict) else None
         if not window:
             continue
@@ -295,6 +323,12 @@ def mini_account_text(
         if parts:
             text.append(" · ", style=palette.track)
         text.append(f"{name} (!)", style=palette.sev_crit)
+        parts += 1
+    resets = reset_credits_text(last_good, now)
+    if resets:
+        if parts:
+            text.append(" · ", style=TRACK)
+        text.append(f"Resets {resets}", style=MUTED)
         parts += 1
     if not parts:
         text.append("usage unknown", style=palette.muted)
