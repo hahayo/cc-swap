@@ -302,14 +302,41 @@ class CodexAccountSwitcher:
         data = self._read_sequence()
         return self._current_account_for_auth(auth, data)
 
+    @staticmethod
+    def _match_account_number(
+        accounts: dict[str, Any],
+        email: str,
+        account_id: str,
+        *,
+        allow_workspace_only: bool = True,
+    ) -> str | None:
+        """Find the slot holding this login.
+
+        Seats in one ChatGPT Team workspace share a ``chatgpt_account_id``, so the
+        workspace id on its own cannot tell two logins apart. Match on both fields
+        first, then on the email, which is what actually distinguishes seats. A
+        workspace-only match stays available for a login stored before its email
+        changed, but only while a single slot carries that id.
+        """
+        items = list(accounts.items())
+        for number, account in items:
+            if account.get("accountId") == account_id and account.get("email") == email:
+                return number
+        for number, account in items:
+            if account.get("email") == email:
+                return number
+        if not allow_workspace_only:
+            return None
+        shared = [
+            number for number, account in items if account.get("accountId") == account_id
+        ]
+        return shared[0] if len(shared) == 1 else None
+
     def _current_account_for_auth(
         self, auth: dict[str, Any], data: dict[str, Any]
     ) -> str | None:
         email, account_id, _mode = self._identity_from_auth(auth)
-        for number, account in data["accounts"].items():
-            if account.get("accountId") == account_id or account.get("email") == email:
-                return number
-        return None
+        return self._match_account_number(data["accounts"], email, account_id)
 
     def add_account(self, slot: int | None = None, assume_yes: bool = False) -> None:
         live_auth = self._read_live_auth()
@@ -318,13 +345,10 @@ class CodexAccountSwitcher:
         with FileLock(self.lock_file):
             self._setup_directories()
             data = self._read_sequence()
-            existing = next(
-                (
-                    number
-                    for number, account in data["accounts"].items()
-                    if account.get("accountId") == account_id or account.get("email") == email
-                ),
-                None,
+            # A different email in the same workspace is a different seat, so it must
+            # never resolve onto an existing slot and overwrite that login's tokens.
+            existing = self._match_account_number(
+                data["accounts"], email, account_id, allow_workspace_only=False
             )
             number = str(slot) if slot is not None else existing or self._next_number(data)
             if not number.isdigit() or int(number) < 1:

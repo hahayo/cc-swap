@@ -110,6 +110,55 @@ def test_switch_refuses_to_overwrite_an_unmanaged_live_login(switcher):
     assert json.loads((home / "auth.json").read_text()) == unmanaged
 
 
+def test_seats_sharing_a_workspace_keep_their_own_slots(switcher):
+    instance, home = switcher
+    _write_live(home, _auth("one@example.com", "shared-workspace"))
+    instance.add_account(assume_yes=True)
+
+    _write_live(home, _auth("two@example.com", "shared-workspace"))
+    instance.add_account(assume_yes=True)
+
+    listed = instance.list_accounts()
+    assert [account["email"] for account in listed["accounts"]] == [
+        "one@example.com",
+        "two@example.com",
+    ]
+    assert json.loads((instance.credentials_dir / "account-1.json").read_text()) == _auth(
+        "one@example.com", "shared-workspace"
+    )
+
+
+def test_live_seat_is_identified_by_email_not_just_workspace(switcher):
+    instance, home = switcher
+    _write_live(home, _auth("one@example.com", "shared-workspace"))
+    instance.add_account(assume_yes=True)
+    _write_live(home, _auth("two@example.com", "shared-workspace"))
+    instance.add_account(slot=2, assume_yes=True)
+
+    assert instance.current_account_number() == "2"
+
+
+def test_switch_away_from_a_shared_workspace_seat_keeps_both_logins(switcher):
+    instance, home = switcher
+    _write_live(home, _auth("one@example.com", "shared-workspace"))
+    instance.add_account(assume_yes=True)
+    _write_live(home, _auth("two@example.com", "shared-workspace"))
+    instance.add_account(slot=2, assume_yes=True)
+
+    result = instance.switch_to("1", json_output=True)
+
+    assert result["switched"]
+    assert json.loads((home / "auth.json").read_text()) == _auth(
+        "one@example.com", "shared-workspace"
+    )
+    assert json.loads((instance.credentials_dir / "account-1.json").read_text()) == _auth(
+        "one@example.com", "shared-workspace"
+    )
+    assert json.loads((instance.credentials_dir / "account-2.json").read_text()) == _auth(
+        "two@example.com", "shared-workspace"
+    )
+
+
 def test_api_key_accounts_get_a_stable_non_secret_label(switcher):
     instance, home = switcher
     _write_live(
