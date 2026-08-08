@@ -567,6 +567,34 @@ class TestUsageRows:
             "3 banked · earliest expires 2d"
         )
 
+    def test_banked_resets_render_in_the_card_and_the_mini_line(self):
+        """The banked-reset lines must actually render, in both themes.
+
+        ``reset_credits_text`` being correct is not enough: only a Codex
+        account has ``reset_credits``, so the two call sites that draw it are
+        skipped by every Claude-only fixture — a bad style reference there
+        raises NameError at paint time and no other test notices.
+        """
+        from claude_swap.tui.theme import CSWAP_LIGHT, Palette
+        from claude_swap.tui.widgets import account_card_text, mini_account_text
+
+        now = 1_700_000_000.0
+        entry = UsageEntry(
+            last_good={
+                "weekly": {"pct": 42.0},
+                "reset_credits": {"available": 3},
+            },
+            fetched_at=now,
+        )
+        acc = make_account(1, active=True, entry=entry)
+        for palette in (Palette.DARK, Palette.from_theme(CSWAP_LIGHT)):
+            assert "Resets 3 banked" in account_card_text(
+                acc, 80, now=now, palette=palette
+            ).plain
+            assert "Resets 3 banked" in mini_account_text(
+                acc, now, palette=palette
+            ).plain
+
     def test_no_data_no_rows(self):
         from claude_swap.tui.widgets import usage_rows
 

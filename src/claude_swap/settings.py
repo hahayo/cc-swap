@@ -108,7 +108,7 @@ SETTING_SPECS: dict[str, SettingSpec] = {
         ),
         SettingSpec(
             "autoswitch", "intervalSeconds", "interval_seconds", "float", 15.0, 3600.0,
-            help="Poll interval for the cswap auto loop, in seconds",
+            help="Poll interval for the ccswap auto loop, in seconds",
         ),
         SettingSpec(
             "autoswitch", "cooldownSeconds", "cooldown_seconds", "float", 0.0, 86400.0,
@@ -306,7 +306,7 @@ def parse_setting_value(spec: SettingSpec, raw_value: str):
         if not value:
             raise ConfigError(
                 f"{spec.dotted} expects a non-empty value; use "
-                f"'cswap config unset {spec.dotted}' to clear it"
+                f"'ccswap config unset {spec.dotted}' to clear it"
             )
         return value
     try:

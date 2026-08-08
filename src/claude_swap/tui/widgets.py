@@ -254,8 +254,8 @@ def account_card_text(
     resets = reset_credits_text(acc.usage.last_good, now)
     if resets:
         text.append("\n    ")
-        text.append("Resets ", style=MUTED)
-        text.append(resets, style=FOREGROUND)
+        text.append("Resets ", style=palette.muted)
+        text.append(resets, style=palette.foreground)
     return text
 
 
@@ -327,8 +327,8 @@ def mini_account_text(
     resets = reset_credits_text(last_good, now)
     if resets:
         if parts:
-            text.append(" · ", style=TRACK)
-        text.append(f"Resets {resets}", style=MUTED)
+            text.append(" · ", style=palette.track)
+        text.append(f"Resets {resets}", style=palette.muted)
         parts += 1
     if not parts:
         text.append("usage unknown", style=palette.muted)

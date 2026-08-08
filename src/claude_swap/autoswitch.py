@@ -392,7 +392,7 @@ class QuarantineEvent(AutoSwitchEvent):
     def human(self) -> str:
         return (
             f"Account-{self.number} ({self.email}) quarantined: {self.reason}. "
-            f"Log in with it and run 'cswap --add-account --slot {self.number}' "
+            f"Log in with it and run 'ccswap --add-account --slot {self.number}' "
             "to recover."
         )
 
@@ -880,14 +880,14 @@ class AutoSwitchEngine:
                 self._emit(
                     NoSwitchEvent(
                         reason="unmanaged-active-account",
-                        detail="run 'cswap --add-account' to include it in rotation",
+                        detail="run 'ccswap --add-account' to include it in rotation",
                     )
                 )
             else:
                 self._emit(
                     NoSwitchEvent(
                         reason="no-active-account",
-                        detail="log in and run 'cswap --add-account' first",
+                        detail="log in and run 'ccswap --add-account' first",
                     )
                 )
             return TickOutcome.NO_ACTION

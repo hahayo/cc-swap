@@ -159,7 +159,7 @@ def shared_credential_fields(credentials: str | None) -> dict | None:
         unrecognized = data.keys() - SHARED_CREDENTIAL_KEYS - ACCOUNT_CREDENTIAL_KEYS
         if unrecognized:
             _logger.debug(
-                "Live credential has sibling keys cswap does not recognize "
+                "Live credential has sibling keys ccswap does not recognize "
                 "(a newer Claude Code?), treating them as slot-owned: %s",
                 sorted(unrecognized),
             )

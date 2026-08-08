@@ -488,8 +488,8 @@ class SessionManager:
         if self.switcher._account_kind(account_num) == "api_key":
             raise SessionError(
                 f"Account-{account_num} ({email}) is an API-key account; "
-                "'cswap run' (session mode) does not support API-key accounts yet. "
-                "Use 'cswap --switch-to' to make it your default login instead."
+                "'ccswap run' (session mode) does not support API-key accounts yet. "
+                "Use 'ccswap --switch-to' to make it your default login instead."
             )
 
     # -- bootstrap -------------------------------------------------------
@@ -537,7 +537,7 @@ class SessionManager:
                 raise SessionError(
                     f"Session profile for Account-{account_num} ({email}) failed "
                     f"validation. Log in with that account and re-add it: "
-                    f"cswap --add-account --slot {account_num}"
+                    f"ccswap --add-account --slot {account_num}"
                 )
         # Lock released here, before any exec.
 
@@ -555,7 +555,7 @@ class SessionManager:
         if not creds:
             raise SessionError(
                 f"Account-{account_num} has no stored credentials. "
-                f"Re-add with: cswap --add-account --slot {account_num}"
+                f"Re-add with: ccswap --add-account --slot {account_num}"
             )
 
         # One refresh so the profile starts with a fresh access token; persist
@@ -584,7 +584,7 @@ class SessionManager:
         if not oauth_account:
             raise SessionError(
                 f"Account-{account_num} has no stored config backup. "
-                f"Re-add with: cswap --add-account --slot {account_num}"
+                f"Re-add with: ccswap --add-account --slot {account_num}"
             )
 
         session_dir.mkdir(parents=True, exist_ok=True)

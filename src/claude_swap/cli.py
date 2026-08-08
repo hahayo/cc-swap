@@ -140,7 +140,7 @@ Examples:
         nargs="?",
         metavar="NUM|EMAIL",
         help="Account to run (number or email). Omit to use the current "
-        "directory's mapping (see `cswap map`).",
+        "directory's mapping (see `ccswap map`).",
     )
     parser.add_argument(
         "--no-share",
@@ -235,18 +235,18 @@ def _map_command(argv: list[str]) -> None:
     mutually-exclusive group can't hold a positional subcommand).
     """
     parser = argparse.ArgumentParser(
-        prog="cswap map",
+        prog=f"{_prog_name()} map",
         description=(
-            "Map a stored account to a directory so `cswap run` (with no "
+            "Map a stored account to a directory so `ccswap run` (with no "
             "account) auto-launches it there. With no arguments, lists all "
             "mappings."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  cswap map 2 ~/work/client-app
-  cswap map user@example.com          # map the current directory
-  cswap map                           # list all mappings
+  ccswap map 2 ~/work/client-app
+  ccswap map user@example.com          # map the current directory
+  ccswap map                           # list all mappings
         """,
     )
     parser.add_argument(
@@ -302,7 +302,7 @@ Examples:
 def _unmap_command(argv: list[str]) -> None:
     """Handle `cswap unmap [PATH]` — remove a directory→account mapping."""
     parser = argparse.ArgumentParser(
-        prog="cswap unmap",
+        prog=f"{_prog_name()} unmap",
         description="Remove a directory → account mapping (default: current directory).",
     )
     parser.add_argument(
@@ -347,14 +347,14 @@ def _swap_command(argv: list[str]) -> None:
         prog=f"{_prog_name()} swap",
         description=(
             "Exchange two accounts' slot numbers, so they trade places in "
-            "`cswap list` and as numeric targets. Aliases, backups, and "
+            "`ccswap list` and as numeric targets. Aliases, backups, and "
             "session history move with their account."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  cswap swap 1 2
-  cswap swap dev user@example.com
+  ccswap swap 1 2
+  ccswap swap dev user@example.com
         """,
     )
     parser.add_argument("first", metavar="NUM|EMAIL|ALIAS", help="One account")
@@ -398,9 +398,9 @@ def _move_command(argv: list[str]) -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  cswap move user@example.com 1   move an account onto shortcut 1
-  cswap move dev 1                by alias
-  cswap move 2 1                  by number (swaps if slot 1 is taken)
+  ccswap move user@example.com 1   move an account onto shortcut 1
+  ccswap move dev 1                by alias
+  ccswap move 2 1                  by number (swaps if slot 1 is taken)
         """,
     )
     parser.add_argument("account", metavar="NUM|EMAIL|ALIAS", help="Account to move")
@@ -442,7 +442,7 @@ def _alias_command(argv: list[str]) -> None:
     mutually-exclusive group can't hold a positional subcommand).
     """
     parser = argparse.ArgumentParser(
-        prog="cswap alias",
+        prog=f"{_prog_name()} alias",
         description=(
             "Set, remove, or list a short display alias for an account. "
             "Once set, the alias can be used anywhere an account number or "
@@ -451,10 +451,10 @@ def _alias_command(argv: list[str]) -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  cswap alias 2 dev
-  cswap alias user@example.com dev
-  cswap alias 2 --unset
-  cswap alias                         # list all aliases
+  ccswap alias 2 dev
+  ccswap alias user@example.com dev
+  ccswap alias 2 --unset
+  ccswap alias                         # list all aliases
         """,
     )
     parser.add_argument(
@@ -665,7 +665,7 @@ def _auto_command(argv: list[str]) -> None:
     import time as _time
 
     parser = argparse.ArgumentParser(
-        prog="ccswap auto",
+        prog=f"{_prog_name()} auto",
         description=(
             "Automatically switch accounts when the active one nears its "
             "5h/7d rate limit. Runs a foreground polling loop; use --once "
@@ -847,7 +847,7 @@ def _config_command(argv: list[str]) -> None:
         for spec in SETTING_SPECS.values()
     )
     parser = argparse.ArgumentParser(
-        prog="ccswap config",
+        prog=f"{_prog_name()} config",
         description=(
             "Read and edit ccswap settings (settings.json in the "
             "backup root)."
@@ -858,11 +858,11 @@ Keys:
 {key_lines}
 
 Examples:
-  cswap config                              # list effective settings
-  cswap config get autoswitch.threshold
-  cswap config set autoswitch.threshold 80
-  cswap config unset autoswitch.threshold   # back to the default
-  cswap config path                         # where settings.json lives
+  ccswap config                              # list effective settings
+  ccswap config get autoswitch.threshold
+  ccswap config set autoswitch.threshold 80
+  ccswap config unset autoswitch.threshold   # back to the default
+  ccswap config path                         # where settings.json lives
         """,
     )
     parser.add_argument(

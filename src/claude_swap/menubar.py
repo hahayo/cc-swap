@@ -914,7 +914,7 @@ def run(switcher) -> int:
                     title="ccswap",
                     message="Couldn't read the active credential. If the menu bar is running "
                             "as a background/login agent, macOS blocks its Keychain access — "
-                            "quit and relaunch it from a Terminal with: cswap --menubar",
+                            "quit and relaunch it from a Terminal with: ccswap --menubar",
                 )
                 return
             except ClaudeSwitchError as e:

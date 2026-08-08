@@ -135,6 +135,16 @@ class TestJsonHelpers:
         out = usage_to_json(usage, fetched_at=now)
         assert out["scoped"][0]["aheadOfPace"] is True
 
+    def test_usage_to_json_pace_fields_on_codex_weekly_window(self):
+        # Codex's canonical `weekly` window is the same 7-day cadence as
+        # Claude's seven_day, so it gets the same pace treatment.
+        now = 1_700_000_000.0
+        resets_at = (datetime.fromtimestamp(now, tz=timezone.utc) + timedelta(days=6)).isoformat()
+        usage = {"weekly": {"pct": 50.0, "resets_at": resets_at}}
+        out = usage_to_json(usage, fetched_at=now)
+        assert out["weekly"]["aheadOfPace"] is True
+        assert out["weekly"]["expectedPct"] == pytest.approx(14.3, abs=0.1)
+
     def test_usage_to_json_five_hour_never_gets_pace_fields(self):
         now = 1_700_000_000.0
         resets_at = (datetime.fromtimestamp(now, tz=timezone.utc) + timedelta(hours=4)).isoformat()
