@@ -184,6 +184,54 @@ def test_switching_away_from_an_unregistered_sibling_seat_is_refused(switcher):
     )
 
 
+def test_the_same_email_in_two_workspaces_keeps_separate_slots(switcher):
+    instance, home = switcher
+    _write_live(home, _auth("same@example.com", "workspace-one"))
+    instance.add_account(assume_yes=True)
+
+    _write_live(home, _auth("same@example.com", "workspace-two"))
+    instance.add_account(assume_yes=True)
+
+    assert [account["number"] for account in instance.list_accounts()["accounts"]] == [1, 2]
+    assert json.loads((instance.credentials_dir / "account-1.json").read_text()) == _auth(
+        "same@example.com", "workspace-one"
+    )
+
+
+def test_a_renamed_login_is_not_claimed_by_its_old_slot(switcher):
+    instance, home = switcher
+    _write_live(home, _auth("old@example.com", "account-one"))
+    instance.add_account(assume_yes=True)
+
+    _write_live(home, _auth("new@example.com", "account-one"))
+
+    assert instance.current_account_number() is None
+
+
+def test_an_unreadable_live_identity_matches_nothing(switcher):
+    instance, home = switcher
+    _write_live(home, _auth("one@example.com", "account-one"))
+    instance.add_account(assume_yes=True)
+    _write_live(home, _auth("two@example.com", "account-two"))
+    instance.add_account(assume_yes=True)
+
+    # Legacy metadata with blank fields must not be matched by a login whose
+    # own identity failed to decode; switch_to reads auth.json directly and so
+    # never sees the validation _read_live_auth applies.
+    sequence = json.loads(instance.sequence_file.read_text())
+    sequence["accounts"]["1"]["email"] = ""
+    sequence["accounts"]["1"]["accountId"] = ""
+    instance.sequence_file.write_text(json.dumps(sequence), encoding="utf-8")
+    _write_live(home, {"auth_mode": "chatgpt", "tokens": {"id_token": "not-a-jwt"}})
+
+    with pytest.raises(SwitchError, match="unmanaged"):
+        instance.switch_to("2", json_output=True)
+
+    assert json.loads((instance.credentials_dir / "account-1.json").read_text()) == _auth(
+        "one@example.com", "account-one"
+    )
+
+
 def test_api_key_accounts_get_a_stable_non_secret_label(switcher):
     instance, home = switcher
     _write_live(

@@ -308,25 +308,27 @@ class CodexAccountSwitcher:
         email: str,
         account_id: str,
     ) -> str | None:
-        """Find the slot holding this login.
+        """Find the slot holding this login, identified by email *and* workspace.
 
-        Seats in one ChatGPT Team workspace share a ``chatgpt_account_id``, so the
-        workspace id on its own cannot tell two logins apart. Match on both fields
-        first, then on the email, which is what actually distinguishes seats.
+        Neither field identifies a login on its own. Seats in one ChatGPT Team
+        workspace share a ``chatgpt_account_id``, and one person can hold seats
+        in several workspaces under a single email. Matching on either field
+        alone therefore collapses two distinct logins onto one slot, and that
+        slot's stored credentials are then overwritten with the other login's
+        tokens -- the failure this helper exists to prevent, in one direction or
+        the other.
 
-        There is deliberately no workspace-only fallback. It would fire exactly
-        when a sibling seat of a registered workspace is live but not yet added,
-        and resolve that unknown login onto the registered seat's slot -- the
-        credential file it would then overwrite. Returning ``None`` instead lets
-        the unmanaged-login guard in :meth:`switch_to` refuse, which is safer than
-        guessing which seat is live.
+        So anything short of an exact match is ``None``, which callers read as
+        "not managed here": :meth:`add_account` allocates a new slot instead of
+        claiming an existing one, and :meth:`switch_to` refuses rather than
+        writing the live login into a slot that may belong to someone else. A
+        renamed login is the cost -- it needs a fresh ``add`` -- and that is a
+        far better trade than silently destroying a login.
         """
-        items = list(accounts.items())
-        for number, account in items:
+        if not email:
+            return None
+        for number, account in accounts.items():
             if account.get("accountId") == account_id and account.get("email") == email:
-                return number
-        for number, account in items:
-            if account.get("email") == email:
                 return number
         return None
 
@@ -343,8 +345,11 @@ class CodexAccountSwitcher:
         with FileLock(self.lock_file):
             self._setup_directories()
             data = self._read_sequence()
-            # A different email in the same workspace is a different seat, so it must
-            # never resolve onto an existing slot and overwrite that login's tokens.
+            # Only the very same login may claim an occupied slot. A different
+            # seat in this workspace, or this email in a different workspace, is
+            # a separate login and gets its own slot -- resolving either onto an
+            # existing slot would overwrite that login's tokens without asking,
+            # since the prompt below is skipped when number == existing.
             existing = self._match_account_number(data["accounts"], email, account_id)
             number = str(slot) if slot is not None else existing or self._next_number(data)
             if not number.isdigit() or int(number) < 1:
