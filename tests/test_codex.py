@@ -159,6 +159,31 @@ def test_switch_away_from_a_shared_workspace_seat_keeps_both_logins(switcher):
     )
 
 
+def test_unregistered_sibling_seat_is_not_mistaken_for_a_managed_one(switcher):
+    instance, home = switcher
+    _write_live(home, _auth("one@example.com", "shared-workspace"))
+    instance.add_account(assume_yes=True)
+    _write_live(home, _auth("two@example.com", "shared-workspace"))
+
+    assert instance.current_account_number() is None
+
+
+def test_switching_away_from_an_unregistered_sibling_seat_is_refused(switcher):
+    instance, home = switcher
+    _write_live(home, _auth("one@example.com", "shared-workspace"))
+    instance.add_account(assume_yes=True)
+    _write_live(home, _auth("elsewhere@example.com", "other-workspace"))
+    instance.add_account(assume_yes=True)
+    _write_live(home, _auth("two@example.com", "shared-workspace"))
+
+    with pytest.raises(SwitchError, match="unmanaged"):
+        instance.switch_to("2", json_output=True)
+
+    assert json.loads((instance.credentials_dir / "account-1.json").read_text()) == _auth(
+        "one@example.com", "shared-workspace"
+    )
+
+
 def test_api_key_accounts_get_a_stable_non_secret_label(switcher):
     instance, home = switcher
     _write_live(

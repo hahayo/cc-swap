@@ -307,16 +307,19 @@ class CodexAccountSwitcher:
         accounts: dict[str, Any],
         email: str,
         account_id: str,
-        *,
-        allow_workspace_only: bool = True,
     ) -> str | None:
         """Find the slot holding this login.
 
         Seats in one ChatGPT Team workspace share a ``chatgpt_account_id``, so the
         workspace id on its own cannot tell two logins apart. Match on both fields
-        first, then on the email, which is what actually distinguishes seats. A
-        workspace-only match stays available for a login stored before its email
-        changed, but only while a single slot carries that id.
+        first, then on the email, which is what actually distinguishes seats.
+
+        There is deliberately no workspace-only fallback. It would fire exactly
+        when a sibling seat of a registered workspace is live but not yet added,
+        and resolve that unknown login onto the registered seat's slot -- the
+        credential file it would then overwrite. Returning ``None`` instead lets
+        the unmanaged-login guard in :meth:`switch_to` refuse, which is safer than
+        guessing which seat is live.
         """
         items = list(accounts.items())
         for number, account in items:
@@ -325,12 +328,7 @@ class CodexAccountSwitcher:
         for number, account in items:
             if account.get("email") == email:
                 return number
-        if not allow_workspace_only:
-            return None
-        shared = [
-            number for number, account in items if account.get("accountId") == account_id
-        ]
-        return shared[0] if len(shared) == 1 else None
+        return None
 
     def _current_account_for_auth(
         self, auth: dict[str, Any], data: dict[str, Any]
@@ -347,9 +345,7 @@ class CodexAccountSwitcher:
             data = self._read_sequence()
             # A different email in the same workspace is a different seat, so it must
             # never resolve onto an existing slot and overwrite that login's tokens.
-            existing = self._match_account_number(
-                data["accounts"], email, account_id, allow_workspace_only=False
-            )
+            existing = self._match_account_number(data["accounts"], email, account_id)
             number = str(slot) if slot is not None else existing or self._next_number(data)
             if not number.isdigit() or int(number) < 1:
                 raise ValidationError("Codex account slot must be a positive integer")
