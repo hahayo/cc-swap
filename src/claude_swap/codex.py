@@ -423,8 +423,57 @@ class CodexAccountSwitcher:
         if not numbers:
             raise SwitchError("No Codex accounts are managed yet")
         current = self.current_account_number()
-        target = numbers[0] if current not in numbers else numbers[(numbers.index(current) + 1) % len(numbers)]
+        start = numbers.index(current) + 1 if current in numbers else 0
+        rotation = (numbers[(start + offset) % len(numbers)] for offset in range(len(numbers)))
+        target = next(
+            (number for number in rotation if not self._disabled_from_data(data, number)),
+            None,
+        )
+        if target is None:
+            raise SwitchError(
+                "Every managed Codex account is disabled — re-enable one first"
+            )
         return self.switch_to(target, json_output=json_output)
+
+    @staticmethod
+    def _disabled_from_data(data: dict[str, Any], number: str) -> bool:
+        record = data["accounts"].get(number)
+        return bool(record and record.get("disabled"))
+
+    def is_account_disabled(self, identifier: str) -> bool:
+        data = self._read_sequence()
+        return self._disabled_from_data(data, self._resolve(identifier, data))
+
+    def set_account_disabled(self, identifier: str, disabled: bool) -> None:
+        """Hold a Codex account out of automatic rotation, or return it.
+
+        Same contract as the Claude switcher's: disabling only affects
+        automatic selection (bare ``switch`` rotation and the auto engine).
+        The account stays managed and remains a valid explicit
+        ``ccswap codex switch <num|email>`` target.
+        """
+        with FileLock(self.lock_file):
+            data = self._read_sequence()
+            number = self._resolve(identifier, data)
+            record = data["accounts"][number]
+            email = record.get("email", "")
+            verb = "disabled" if disabled else "enabled"
+            if bool(record.get("disabled")) == disabled:
+                print(f"Codex Account {number} ({email}) is already {verb}.")
+                return
+            if disabled:
+                record["disabled"] = True
+            else:
+                record.pop("disabled", None)
+            self._write_sequence(data)
+        print(f"{verb.capitalize()} Codex Account {number} ({email}).")
+
+    def clear_poll_policy_inputs(self) -> None:
+        """No-op: Codex usage polling has no persisted poll plan to pin.
+
+        Present so provider-agnostic callers (the TUI auto view) can unmount
+        against either switcher.
+        """
 
     def status(self, json_output: bool = False) -> dict[str, Any]:
         data = self._read_sequence()
@@ -466,6 +515,7 @@ class CodexAccountSwitcher:
                     "planType": plan,
                     "label": codex_org_label(plan),
                     "active": number == active,
+                    "disabled": bool(account.get("disabled")),
                 }
             )
         return {
@@ -484,6 +534,7 @@ class CodexAccountSwitcher:
         else:
             for account in accounts:
                 marker = " ● active" if account["active"] else ""
+                marker += " (disabled)" if account["disabled"] else ""
                 # Prefer the plan label (e.g. "Codex Team"); fall back to the
                 # auth mode for API-key logins or backups added before planType
                 # was recorded.
@@ -576,6 +627,7 @@ class CodexAccountSwitcher:
                 kind="api_key" if account.get("authMode") == "api_key" else "oauth",
                 switchable=self._read_account_auth(number) is not None,
                 usage=entries[number],
+                disabled=bool(account.get("disabled")),
             )
             for number, account in sorted(data["accounts"].items(), key=lambda item: int(item[0]))
         )

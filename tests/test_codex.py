@@ -95,6 +95,35 @@ def test_switch_saves_the_currently_refreshed_auth_before_activating_target(swit
     assert json.loads((instance.credentials_dir / "account-2.json").read_text()) == refreshed
 
 
+def test_disabled_account_is_skipped_by_rotation_but_stays_explicit_target(switcher):
+    instance, home = switcher
+    for name in ("one", "two", "three"):
+        _write_live(home, _auth(f"{name}@example.com", f"account-{name}"))
+        instance.add_account(assume_yes=True)
+    instance.switch_to("1", json_output=True)
+
+    instance.set_account_disabled("2", True)
+    assert instance.is_account_disabled("2")
+    assert instance.accounts_snapshot(fetch=set()).accounts[1].disabled
+
+    assert instance.switch(json_output=True)["to"]["number"] == 3  # 2 skipped
+    assert instance.switch_to("2", json_output=True)["switched"]  # still explicit
+
+    instance.set_account_disabled("2", False)
+    instance.switch_to("1", json_output=True)
+    assert instance.switch(json_output=True)["to"]["number"] == 2
+
+
+def test_switch_raises_when_every_codex_account_is_disabled(switcher):
+    instance, home = switcher
+    _write_live(home, _auth("one@example.com", "account-one"))
+    instance.add_account(assume_yes=True)
+    instance.set_account_disabled("1", True)
+
+    with pytest.raises(SwitchError, match="disabled"):
+        instance.switch(json_output=True)
+
+
 def test_switch_refuses_to_overwrite_an_unmanaged_live_login(switcher):
     instance, home = switcher
     _write_live(home, _auth("one@example.com", "account-one"))

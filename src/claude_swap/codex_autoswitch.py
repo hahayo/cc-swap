@@ -160,7 +160,10 @@ class CodexAutoSwitchEngine:
         candidates = [
             account
             for number, account in accounts.items()
-            if number != current and account.switchable and account.kind == "oauth"
+            if number != current
+            and account.switchable
+            and account.kind == "oauth"
+            and not account.disabled
         ]
         if not candidates:
             self._emit(NoSwitchEvent(reason="no-candidates"))
