@@ -509,6 +509,11 @@ class TestMoveUnreadableSourceIsNotAbsent:
         self, temp_home: Path, sample_sequence_data: dict
     ):
         switcher = ClaudeAccountSwitcher()
+        # The probe is a chmod'd .enc, so the store has to be on the file
+        # backend. Unpinned, this test only ran that way off macOS, where
+        # `_write_account_credentials` goes to the Keychain and leaves no .enc
+        # to chmod. The guard under test is the move's, not the backend's.
+        switcher.platform = Platform.LINUX
         self._write(switcher, sample_sequence_data)
         switcher._write_account_credentials("2", "account2@example.com", "live-rt")
         switcher._write_account_credentials("1", "account1@example.com", "rt-1")

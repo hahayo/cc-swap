@@ -665,13 +665,26 @@ def test_c0_a_scratch_home_still_protects_the_os_account_home_store(monkeypatch,
     specs = conftest._freeze_real_store_specs()
     roots = [root for root, _recursive in specs]
 
-    assert pwd_home / ".local" / "share" / "claude-swap" in roots, (
+    # Resolve the expected root through `paths` rather than spelling out the
+    # XDG layout: only Linux/WSL store under ~/.local/share/claude-swap, so a
+    # hardcoded one asserted a root that does not exist on macOS (and would
+    # not on Windows either, were this test not already skipped there) --
+    # where the store is the legacy ~/.claude-swap-backup. The claim under
+    # test is "that home's true store is frozen", not which layout it uses.
+    monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+
+    def _store_root_under(home: Path) -> Path:
+        monkeypatch.setenv("HOME", str(home))
+        monkeypatch.setenv("USERPROFILE", str(home))
+        return paths.get_backup_root()
+
+    assert _store_root_under(pwd_home) in roots, (
         "with $HOME pointed at a scratch dir -- what the mandated isolation "
         "recipe does BEFORE the interpreter starts -- the account's true "
         "store under the OS account home must still be frozen as protected; "
         "otherwise the guard is armed only for a bare-pytest developer and "
         "disarmed for exactly the population running mutation batteries"
     )
-    assert scratch / ".local" / "share" / "claude-swap" in roots, (
+    assert _store_root_under(scratch) in roots, (
         "the scratch HOME's own root must stay protected too"
     )
