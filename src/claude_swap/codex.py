@@ -302,14 +302,41 @@ class CodexAccountSwitcher:
         data = self._read_sequence()
         return self._current_account_for_auth(auth, data)
 
+    @staticmethod
+    def _match_account_number(
+        accounts: dict[str, Any],
+        email: str,
+        account_id: str,
+    ) -> str | None:
+        """Find the slot holding this login, identified by email *and* workspace.
+
+        Neither field identifies a login on its own. Seats in one ChatGPT Team
+        workspace share a ``chatgpt_account_id``, and one person can hold seats
+        in several workspaces under a single email. Matching on either field
+        alone therefore collapses two distinct logins onto one slot, and that
+        slot's stored credentials are then overwritten with the other login's
+        tokens -- the failure this helper exists to prevent, in one direction or
+        the other.
+
+        So anything short of an exact match is ``None``, which callers read as
+        "not managed here": :meth:`add_account` allocates a new slot instead of
+        claiming an existing one, and :meth:`switch_to` refuses rather than
+        writing the live login into a slot that may belong to someone else. A
+        renamed login is the cost -- it needs a fresh ``add`` -- and that is a
+        far better trade than silently destroying a login.
+        """
+        if not email:
+            return None
+        for number, account in accounts.items():
+            if account.get("accountId") == account_id and account.get("email") == email:
+                return number
+        return None
+
     def _current_account_for_auth(
         self, auth: dict[str, Any], data: dict[str, Any]
     ) -> str | None:
         email, account_id, _mode = self._identity_from_auth(auth)
-        for number, account in data["accounts"].items():
-            if account.get("accountId") == account_id or account.get("email") == email:
-                return number
-        return None
+        return self._match_account_number(data["accounts"], email, account_id)
 
     def add_account(self, slot: int | None = None, assume_yes: bool = False) -> None:
         live_auth = self._read_live_auth()
@@ -318,14 +345,12 @@ class CodexAccountSwitcher:
         with FileLock(self.lock_file):
             self._setup_directories()
             data = self._read_sequence()
-            existing = next(
-                (
-                    number
-                    for number, account in data["accounts"].items()
-                    if account.get("accountId") == account_id or account.get("email") == email
-                ),
-                None,
-            )
+            # Only the very same login may claim an occupied slot. A different
+            # seat in this workspace, or this email in a different workspace, is
+            # a separate login and gets its own slot -- resolving either onto an
+            # existing slot would overwrite that login's tokens without asking,
+            # since the prompt below is skipped when number == existing.
+            existing = self._match_account_number(data["accounts"], email, account_id)
             number = str(slot) if slot is not None else existing or self._next_number(data)
             if not number.isdigit() or int(number) < 1:
                 raise ValidationError("Codex account slot must be a positive integer")
