@@ -220,6 +220,8 @@ ccswap alias 2 dev               # Give an account a short alias (usable anywher
 ccswap alias 2 --unset           # Remove an account's alias
 ccswap alias                     # List all aliases
 ccswap move 2 1                  # Assign an account to a slot (relocates to an empty slot, swaps if taken)
+ccswap unclaimed                 # List stashed credential entries (slot + why they were stashed)
+ccswap unclaimed --purge ID      # Drop one (deletes its bytes; recover with /login + `ccswap add`)
 ccswap tui                       # Interactive dashboard (also: bare `ccswap`)
 ccswap watch                     # Dashboard, opened on the live watch page
 ccswap upgrade                   # Upgrade ccswap to the latest version
