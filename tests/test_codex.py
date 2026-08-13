@@ -379,6 +379,37 @@ def test_snapshot_never_refreshes_the_active_codex_login(switcher, monkeypatch):
     assert snapshot.accounts[0].usage.last_error == "expired"
 
 
+def test_snapshot_never_refreshes_a_token_the_live_login_still_holds(switcher, monkeypatch):
+    instance, home = switcher
+    _write_live(home, _auth("old@example.com", "account-one"))
+    instance.add_account(assume_yes=True)
+
+    # The login was renamed, so it no longer matches the slot that stores it and
+    # reads as inactive -- but Codex is still using the token in that backup.
+    _write_live(home, _auth("new@example.com", "account-one"))
+    assert instance.current_account_number() is None
+
+    monkeypatch.setattr(
+        codex,
+        "fetch_codex_usage",
+        lambda auth, *, base_url: (_ for _ in ()).throw(
+            CodexUsageError("expired", status_code=401)
+        ),
+    )
+    monkeypatch.setattr(
+        codex,
+        "refresh_codex_auth",
+        lambda auth: pytest.fail("rotating a live refresh token logs that session out"),
+    )
+
+    snapshot = instance.accounts_snapshot(fetch={"1"})
+
+    assert snapshot.accounts[0].usage.last_error == "expired"
+    assert json.loads((instance.credentials_dir / "account-1.json").read_text()) == _auth(
+        "old@example.com", "account-one"
+    )
+
+
 def _jwt_with_plan(email: str, account_id: str, plan: str) -> str:
     payload = base64.urlsafe_b64encode(
         json.dumps(

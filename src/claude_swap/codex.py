@@ -737,6 +737,13 @@ class CodexAccountSwitcher:
         therefore deliberately covers this uncommon network request: a second
         ``ccswap`` process cannot activate the account between consuming its
         old refresh token and atomically saving the replacement.
+
+        Identity alone does not decide what is safe to rotate. A login whose
+        stored email no longer matches its slot is not matched by
+        :meth:`_match_account_number`, so it reads as inactive even while Codex
+        is using it -- and rotating the token it holds logs that session out.
+        The token itself is the reliable check, so bail whenever the live
+        auth.json carries the very token about to be consumed.
         """
         expected_tokens = expected_auth.get("tokens")
         expected_refresh = (
@@ -753,6 +760,12 @@ class CodexAccountSwitcher:
             if (
                 live_auth is not None
                 and self._current_account_for_auth(live_auth, data) == number
+            ):
+                return None
+            live_tokens = live_auth.get("tokens") if live_auth is not None else None
+            if (
+                isinstance(live_tokens, dict)
+                and live_tokens.get("refresh_token") == expected_refresh
             ):
                 return None
             stored_auth = self._read_account_auth(number)
