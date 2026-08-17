@@ -97,6 +97,18 @@ def _headers(auth: dict[str, Any]) -> dict[str, str]:
     return headers
 
 
+def _authorized_request(url: str, auth: dict[str, Any]) -> urllib.request.Request:
+    """Build a request whose credential headers never survive a redirect."""
+    request = urllib.request.Request(url)
+    sensitive = {"authorization", "chatgpt-account-id", "x-openai-fedramp"}
+    for name, value in _headers(auth).items():
+        if name.lower() in sensitive:
+            request.add_unredirected_header(name, value)
+        else:
+            request.add_header(name, value)
+    return request
+
+
 def _window(window: object) -> dict[str, Any] | None:
     if not isinstance(window, dict):
         return None
@@ -225,7 +237,7 @@ def fetch_codex_usage(
 ) -> dict[str, Any]:
     """Fetch normalized Codex quota windows and earned-reset availability."""
     url = usage_url(base_url)
-    request = urllib.request.Request(url, headers=_headers(auth))
+    request = _authorized_request(url, auth)
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             payload = json.loads(response.read().decode("utf-8"))
@@ -250,11 +262,8 @@ def fetch_codex_usage(
     # failure here must not hide otherwise valid quota data.
     reset_credits = usage.get("reset_credits")
     if isinstance(reset_credits, dict) and reset_credits.get("available", 0) > 0:
-        detail_headers = _headers(auth)
-        detail_headers["OpenAI-Beta"] = "codex-1"
-        detail_request = urllib.request.Request(
-            reset_credits_url(base_url), headers=detail_headers
-        )
+        detail_request = _authorized_request(reset_credits_url(base_url), auth)
+        detail_request.add_header("OpenAI-Beta", "codex-1")
         try:
             with urllib.request.urlopen(detail_request, timeout=timeout) as response:
                 details_payload = json.loads(response.read().decode("utf-8"))

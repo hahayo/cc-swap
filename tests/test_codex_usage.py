@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import base64
 import json
+import urllib.error
+import urllib.request
 
 from claude_swap import codex_usage
 
@@ -83,6 +85,33 @@ def test_fetch_usage_sends_codex_auth_headers_and_normalizes_windows(monkeypatch
         "five_hour": {"pct": 12.5, "resets_at": "2027-01-15T08:00:00Z"},
         "weekly": {"pct": 65.0},
     }
+
+
+def test_cross_host_redirect_cannot_forward_codex_bearer_token(monkeypatch):
+    def urlopen(request, *, timeout):
+        redirected = urllib.request.HTTPRedirectHandler().redirect_request(
+            request,
+            None,
+            302,
+            "Found",
+            {},
+            "https://example.invalid/collect",
+        )
+        assert redirected is not None
+        assert redirected.get_header("Authorization") is None
+        assert redirected.get_header("ChatGPT-account-id") is None
+        raise urllib.error.HTTPError(
+            request.full_url, 302, "Found", {}, None
+        )
+
+    monkeypatch.setattr(codex_usage.urllib.request, "urlopen", urlopen)
+
+    try:
+        codex_usage.fetch_codex_usage(_auth())
+    except codex_usage.CodexUsageError as exc:
+        assert "302" in str(exc)
+    else:
+        raise AssertionError("redirected usage request must fail")
 
 
 def test_weekly_only_primary_is_classified_from_duration(monkeypatch):

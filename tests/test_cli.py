@@ -750,7 +750,20 @@ class TestSubcommandAliases:
             cli.main()
 
         switcher_cls.return_value.switch_to.assert_called_once_with(
-            "2", json_output=True
+            "2", json_output=True, force=False
+        )
+
+    def test_codex_switch_force_is_forwarded_to_codex_provider(self):
+        with patch("claude_swap.cli.CodexAccountSwitcher") as switcher_cls, \
+             patch.object(
+                 sys,
+                 "argv",
+                 ["ccswap", "codex", "switch", "2", "--json", "--force"],
+             ):
+            cli.main()
+
+        switcher_cls.return_value.switch_to.assert_called_once_with(
+            "2", json_output=True, force=True
         )
 
     def test_codex_usage_subcommand_dispatches_to_codex_provider(self):

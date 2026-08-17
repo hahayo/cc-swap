@@ -202,13 +202,12 @@ def get_running_instances(
     return list_sessions(resolved), list_ide_instances(resolved)
 
 
-def is_codex_running() -> bool:
-    """Best-effort check for a live Codex CLI process.
+def is_codex_running() -> bool | None:
+    """Check for a live Codex CLI process, or return ``None`` if unknown.
 
     Codex writes no PID or lock file we can trust for liveness, so this scans
-    the OS process table by executable name. It is only used to phrase the
-    post-switch reminder ("Codex is running, restart it" vs "ready on next
-    launch"); any failure returns ``False`` so detection never blocks a switch.
+    the OS process table by executable name. Callers using this as a safety
+    gate must treat ``None`` as fail-closed and require an explicit override.
     """
     try:
         if sys.platform == "win32":
@@ -218,6 +217,8 @@ def is_codex_running() -> bool:
                 text=True,
                 timeout=5,
             )
+            if completed.returncode != 0:
+                return None
             return "codex.exe" in completed.stdout.lower()
         # pgrep -x matches the executable name exactly, so it won't fire on
         # ccswap itself or on unrelated paths that merely contain "codex".
@@ -227,7 +228,11 @@ def is_codex_running() -> bool:
             text=True,
             timeout=5,
         )
-        return completed.returncode == 0 and bool(completed.stdout.strip())
+        if completed.returncode == 0:
+            return bool(completed.stdout.strip())
+        if completed.returncode == 1:
+            return False
+        return None
     except (OSError, subprocess.SubprocessError) as exc:
         logger.debug("Codex process detection failed: %s", exc)
-        return False
+        return None

@@ -4268,6 +4268,101 @@ class TestListAccountsOrgDisplay:
 # ── Task 8: backward compatibility ───────────────────────────────────────────
 
 class TestBackwardCompatibility:
+    def test_reads_cswap_021_three_account_data_without_rewriting_it(self, temp_home):
+        """The current fork directly adopts cswap 0.21 account state on WSL."""
+        backup_dir = get_backup_root()
+        configs_dir = backup_dir / "configs"
+        credentials_dir = backup_dir / "credentials"
+        configs_dir.mkdir(parents=True)
+        credentials_dir.mkdir(parents=True)
+        accounts = {
+            "6": {
+                "email": "six@example.com",
+                "uuid": "user-six",
+                "organizationUuid": "org-six",
+                "organizationName": "Six Org",
+                "added": "2026-08-01T00:00:00Z",
+            },
+            "8": {
+                "email": "eight@example.com",
+                "uuid": "user-eight",
+                "organizationUuid": "",
+                "organizationName": "",
+                "added": "2026-08-02T00:00:00Z",
+            },
+            "10": {
+                "email": "ten@example.com",
+                "uuid": "user-ten",
+                "organizationUuid": "org-ten",
+                "organizationName": "Ten Org",
+                "added": "2026-08-03T00:00:00Z",
+            },
+        }
+        sequence_path = backup_dir / "sequence.json"
+        sequence_path.write_text(
+            json.dumps(
+                {
+                    "accounts": accounts,
+                    "activeAccountNumber": 8,
+                    "lastUpdated": "2026-08-10T00:00:00Z",
+                    "sequence": [6, 8, 10],
+                }
+            ),
+            encoding="utf-8",
+        )
+        expected_credentials = {}
+        expected_configs = {}
+        protected_paths = [sequence_path]
+        for number, account in accounts.items():
+            email = account["email"]
+            credentials = json.dumps(
+                {
+                    "claudeAiOauth": {
+                        "accessToken": f"fake-access-{number}",
+                        "refreshToken": f"fake-refresh-{number}",
+                    }
+                }
+            )
+            config = json.dumps(
+                {
+                    "oauthAccount": {
+                        "emailAddress": email,
+                        "accountUuid": account["uuid"],
+                        "organizationUuid": account["organizationUuid"],
+                        "organizationName": account["organizationName"],
+                    },
+                    "projects": {f"/tmp/project-{number}": {"allowedTools": []}},
+                }
+            )
+            credential_path = (
+                credentials_dir / f".creds-{number}-{email}.enc"
+            )
+            credential_path.write_text(
+                base64.b64encode(credentials.encode()).decode(), encoding="utf-8"
+            )
+            config_path = configs_dir / f".claude-config-{number}-{email}.json"
+            config_path.write_text(config, encoding="utf-8")
+            expected_credentials[number] = credentials
+            expected_configs[number] = config
+            protected_paths.extend((credential_path, config_path))
+        original_bytes = {path: path.read_bytes() for path in protected_paths}
+
+        switcher = ClaudeAccountSwitcher()
+
+        assert switcher.resolve_account("six@example.com")[0] == "6"
+        assert switcher.resolve_account("eight@example.com")[0] == "8"
+        assert switcher.resolve_account("ten@example.com")[0] == "10"
+        for number, account in accounts.items():
+            assert (
+                switcher.read_account_credentials(number, account["email"])
+                == expected_credentials[number]
+            )
+            assert (
+                switcher.read_account_config(number, account["email"])
+                == expected_configs[number]
+            )
+        assert {path: path.read_bytes() for path in protected_paths} == original_bytes
+
     def test_old_sequence_json_without_org_fields(self, temp_home, sample_sequence_data, capsys):
         """Old sequence.json without organizationUuid should work correctly."""
         from claude_swap.switcher import ClaudeAccountSwitcher

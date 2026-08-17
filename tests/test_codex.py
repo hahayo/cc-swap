@@ -95,6 +95,77 @@ def test_switch_saves_the_currently_refreshed_auth_before_activating_target(swit
     assert json.loads((instance.credentials_dir / "account-2.json").read_text()) == refreshed
 
 
+def test_switch_refuses_while_codex_is_running_without_changing_auth(
+    switcher, monkeypatch
+):
+    instance, home = switcher
+    _write_live(home, _auth("one@example.com", "account-one"))
+    instance.add_account(assume_yes=True)
+    _write_live(home, _auth("two@example.com", "account-two"))
+    instance.add_account(assume_yes=True)
+    live_before_switch = (home / "auth.json").read_bytes()
+    monkeypatch.setattr(codex, "is_codex_running", lambda: True)
+
+    with pytest.raises(SwitchError, match="Codex is running"):
+        instance.switch_to("1", json_output=True)
+
+    assert (home / "auth.json").read_bytes() == live_before_switch
+    assert instance.current_account_number() == "2"
+
+
+def test_switch_refuses_when_codex_process_detection_is_unknown(
+    switcher, monkeypatch
+):
+    instance, home = switcher
+    _write_live(home, _auth("one@example.com", "account-one"))
+    instance.add_account(assume_yes=True)
+    _write_live(home, _auth("two@example.com", "account-two"))
+    instance.add_account(assume_yes=True)
+    live_before_switch = (home / "auth.json").read_bytes()
+    monkeypatch.setattr(codex, "is_codex_running", lambda: None)
+
+    with pytest.raises(SwitchError, match="Could not determine"):
+        instance.switch_to("1", json_output=True)
+
+    assert (home / "auth.json").read_bytes() == live_before_switch
+
+
+def test_switch_rechecks_codex_liveness_immediately_before_writing_auth(
+    switcher, monkeypatch
+):
+    instance, home = switcher
+    _write_live(home, _auth("one@example.com", "account-one"))
+    instance.add_account(assume_yes=True)
+    _write_live(home, _auth("two@example.com", "account-two"))
+    instance.add_account(assume_yes=True)
+    live_before_switch = (home / "auth.json").read_bytes()
+    states = iter((False, True))
+    monkeypatch.setattr(codex, "is_codex_running", lambda: next(states))
+
+    with pytest.raises(SwitchError, match="Codex is running"):
+        instance.switch_to("1", json_output=True)
+
+    assert (home / "auth.json").read_bytes() == live_before_switch
+
+
+def test_force_switch_allows_explicit_override_while_codex_is_running(
+    switcher, monkeypatch
+):
+    instance, home = switcher
+    _write_live(home, _auth("one@example.com", "account-one"))
+    instance.add_account(assume_yes=True)
+    _write_live(home, _auth("two@example.com", "account-two"))
+    instance.add_account(assume_yes=True)
+    monkeypatch.setattr(codex, "is_codex_running", lambda: True)
+
+    result = instance.switch_to("1", json_output=True, force=True)
+
+    assert result["switched"]
+    assert json.loads((home / "auth.json").read_text()) == _auth(
+        "one@example.com", "account-one"
+    )
+
+
 def test_disabled_account_is_skipped_by_rotation_but_stays_explicit_target(switcher):
     instance, home = switcher
     for name in ("one", "two", "three"):
@@ -311,6 +382,36 @@ def test_snapshot_fetches_codex_usage_and_reuses_fresh_result(switcher, monkeypa
     }
     assert cached.accounts[0].usage.last_good == snapshot.accounts[0].usage.last_good
     assert len(fetched) == 1
+
+
+@pytest.mark.parametrize(
+    "configured_url",
+    [
+        "https://example.invalid/backend-api",
+        "http://chatgpt.com/backend-api",
+    ],
+)
+def test_snapshot_rejects_untrusted_usage_endpoint_before_sending_token(
+    switcher, monkeypatch, configured_url
+):
+    instance, home = switcher
+    (home / "config.toml").write_text(
+        f'chatgpt_base_url = "{configured_url}"\n', encoding="utf-8"
+    )
+    _write_live(home, _auth("one@example.com", "account-one"))
+    instance.add_account(assume_yes=True)
+
+    monkeypatch.setattr(
+        codex,
+        "fetch_codex_usage",
+        lambda *_args, **_kwargs: pytest.fail("token must not be sent"),
+    )
+
+    snapshot = instance.accounts_snapshot()
+
+    error = snapshot.accounts[0].usage.last_error
+    assert error is not None
+    assert "trusted official HTTPS endpoint" in error
 
 
 def test_snapshot_marks_api_key_usage_as_not_applicable(switcher):

@@ -15,11 +15,29 @@ from claude_swap.process_detection import (
     IdeInstance,
     get_claude_dir,
     get_running_instances,
+    is_codex_running,
     is_pid_alive,
     list_ide_instances,
     list_sessions,
 )
 from claude_swap.printer import abbreviate_path, entrypoint_label, format_age
+
+
+class TestCodexProcessDetection:
+    def test_missing_process_command_is_unknown(self):
+        with patch(
+            "claude_swap.process_detection.subprocess.run",
+            side_effect=FileNotFoundError("pgrep missing"),
+        ):
+            assert is_codex_running() is None
+
+    def test_unexpected_pgrep_exit_is_unknown(self):
+        completed = type("Completed", (), {"returncode": 2, "stdout": ""})()
+        with patch(
+            "claude_swap.process_detection.subprocess.run",
+            return_value=completed,
+        ), patch("claude_swap.process_detection.sys.platform", "linux"):
+            assert is_codex_running() is None
 
 
 # --- get_claude_dir ---

@@ -585,6 +585,11 @@ def _codex_command(argv: list[str]) -> None:
     switch = subcommands.add_parser("switch", help="Switch to the next or named Codex account")
     switch.add_argument("account", nargs="?", metavar="NUM|EMAIL")
     switch.add_argument("--json", action="store_true")
+    switch.add_argument(
+        "--force",
+        action="store_true",
+        help="Switch even when a Codex process is running",
+    )
     remove = subcommands.add_parser("remove", help="Remove a saved Codex account")
     remove.add_argument("account", metavar="NUM|EMAIL")
     remove.add_argument("--yes", action="store_true", help="Skip confirmation")
@@ -655,7 +660,7 @@ def _codex_command(argv: list[str]) -> None:
             signal.signal(signal.SIGTERM, lambda *_: engine.stop())
             sys.exit(engine.run_loop())
         elif args.account:
-            switcher.switch_to(args.account, json_output=args.json)
+            switcher.switch_to(args.account, json_output=args.json, force=args.force)
         else:
             switcher.switch(json_output=args.json)
     except ClaudeSwitchError as exc:

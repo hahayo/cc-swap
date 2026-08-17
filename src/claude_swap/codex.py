@@ -25,6 +25,7 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from claude_swap.codex_usage import (
     DEFAULT_CHATGPT_BASE_URL,
@@ -48,12 +49,35 @@ def _codex_restart_hint() -> str:
     A running Codex holds the previous login in memory and never re-reads
     ``auth.json``, so the swap only takes effect on its next launch.
     """
-    if is_codex_running():
+    running = is_codex_running()
+    if running is True:
         return (
             "Codex is running — quit and relaunch it (or start a new session) "
             "to use the selected account."
         )
+    if running is None:
+        return (
+            "Could not determine whether Codex is running — restart every Codex "
+            "CLI/IDE session before using the selected account."
+        )
     return "The selected account is ready and takes effect the next time you start Codex."
+
+
+def _refuse_if_codex_may_be_running(*, force: bool) -> None:
+    """Fail closed unless process detection proves Codex is not running."""
+    if force:
+        return
+    running = is_codex_running()
+    if running is True:
+        raise SwitchError(
+            "Codex is running; quit every Codex CLI/IDE session before "
+            "switching, or explicitly retry with '--force'."
+        )
+    if running is None:
+        raise SwitchError(
+            "Could not determine whether Codex is running; verify every Codex "
+            "CLI/IDE session is closed, or explicitly retry with '--force'."
+        )
 
 
 def get_codex_home() -> Path:
@@ -206,7 +230,31 @@ class CodexAccountSwitcher:
 
     def _chatgpt_base_url(self) -> str:
         value = self._config().get("chatgpt_base_url")
-        return value if isinstance(value, str) and value else DEFAULT_CHATGPT_BASE_URL
+        base_url = value if isinstance(value, str) and value else DEFAULT_CHATGPT_BASE_URL
+        try:
+            parsed = urlsplit(base_url)
+            port = parsed.port
+        except ValueError as exc:
+            raise ConfigError(
+                "Codex usage requires a trusted official HTTPS endpoint"
+            ) from exc
+        trusted_hosts = {"chatgpt.com", "chat.openai.com"}
+        trusted_paths = {"", "/backend-api"}
+        if (
+            parsed.scheme != "https"
+            or parsed.hostname not in trusted_hosts
+            or port not in (None, 443)
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+            or parsed.path.rstrip("/") not in trusted_paths
+        ):
+            raise ConfigError(
+                "Codex usage requires a trusted official HTTPS endpoint; "
+                "remove the custom chatgpt_base_url from config.toml"
+            )
+        return base_url
 
     def _read_live_auth(self) -> dict[str, Any]:
         if not self.codex_home.is_dir():
@@ -391,8 +439,12 @@ class CodexAccountSwitcher:
             self._write_sequence(data)
         print(f"Removed Codex Account {number} ({account['email']})")
 
-    def switch_to(self, identifier: str, json_output: bool = False, force: bool = False) -> dict[str, Any]:
-        del force
+    def switch_to(
+        self,
+        identifier: str,
+        json_output: bool = False,
+        force: bool = False,
+    ) -> dict[str, Any]:
         with FileLock(self.lock_file):
             data = self._read_sequence()
             number = self._resolve(identifier, data)
@@ -420,8 +472,13 @@ class CodexAccountSwitcher:
                     "The current Codex login is unmanaged. Run 'ccswap codex add' "
                     "to preserve it before switching accounts."
                 )
+            _refuse_if_codex_may_be_running(force=force)
             if original_auth is not None and current is not None:
                 self._write_json(self._credential_path(current), original_auth)
+            # Narrow the check/write window after backing up the outgoing
+            # login. Codex does not share a lock with ccswap, so this is still
+            # best-effort; unknown detection remains fail-closed.
+            _refuse_if_codex_may_be_running(force=force)
             try:
                 self._write_json(self.auth_file, auth)
                 data["activeAccountNumber"] = int(number)
